@@ -32,12 +32,12 @@ globalThis.HS = globalThis.HS || {};
   // ------------------------------------------------------------------ prefs
   function loadPrefs() {
     try {
-      const s = JSON.parse(localStorage.getItem("hs.prefs") || "{}");
+      const s = JSON.parse(localStorage.getItem("hop-spades:prefs") || localStorage.getItem("hs.prefs") || "{}");
       Object.keys(G.prefs).forEach(function (k) { if (s[k] !== undefined) G.prefs[k] = s[k]; });
       if (s.opts) Object.keys(G.opts).forEach(function (k) { if (s.opts[k] !== undefined) G.opts[k] = s.opts[k]; });
     } catch (e) { /* storage unavailable */ }
   }
-  function savePrefs() { try { localStorage.setItem("hs.prefs", JSON.stringify(Object.assign({}, G.prefs, { opts: G.opts }))); } catch (e) { /* ignore */ } }
+  function savePrefs() { try { localStorage.setItem("hop-spades:prefs", JSON.stringify(Object.assign({}, G.prefs, { opts: G.opts }))); } catch (e) { /* ignore */ } }
   function setLoad(f, msg) { $("loadFill").style.width = (f * 100) + "%"; if (msg) $("loadMsg").textContent = msg; HopLobby.progress(f, msg); }
   function qualityFrom(settings, device) {
     if (G.prefs.quality && !inLobby()) return G.prefs.quality;

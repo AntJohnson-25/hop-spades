@@ -1,0 +1,14 @@
+{
+  "title": "Hop Spades",
+  "gameId": "hop-spades",
+  "minPlayers": 1,
+  "maxPlayers": 12,
+  "lateJoin": true,
+  "options": [],
+  "leaderboards": [],
+  "achievements": [],
+  "store": [],
+  "build": {
+    "output": "."
+  }
+}
