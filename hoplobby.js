@@ -1,5 +1,5 @@
 /*!
- * HopLobby SDK v1 (release 1.3.0) — https://developers.hoplobby.com/docs/sdk
+ * HopLobby SDK v1 (release 1.7.0) — https://developers.hoplobby.com/docs/sdk
  *
  * Your game runs on your own host, inside a frame on hoplobby.com. This file is the whole bridge: it talks to the
  * HopLobby page around your game with postMessage. It needs no build step and no other files.
@@ -10,6 +10,9 @@
  *   HopLobby.send({ move: 'left' });             // to everyone else; HopLobby.send(data, playerId) to one player
  *   HopLobby.ready();                            // your game finished loading: HopLobby reveals it
  *   HopLobby.endGame({ entries: [{ playerId, place: 1, score: 30 }] });  // host: results card in the lobby
+ *   HopLobby.menu.set({ settings: [...], controls: [...] }); // your settings and keys in HopLobby's Esc menu
+ *   applyQuality(HopLobby.graphics);              // every game follows the player's graphics preset
+ *   HopLobby.on('session', s => {});              // HopLobby's pre-match lobby, rounds and rematch (opt in: session: true)
  *
  * Opened on its own (not inside HopLobby), init() resolves with a one-player "standalone" context so you can work on
  * your game without the platform; send() does nothing and avatar() draws a placeholder. For several players on your
@@ -22,7 +25,7 @@
   if (global.HopLobby && global.HopLobby.version) return;
 
   var VERSION = 1;
-  var RELEASE = '1.3.0';
+  var RELEASE = '1.7.0';
   // Only hoplobby.com (and HopLobby's own local development, or the starter's simulator) may drive the game.
   var PARENTS = [/^https:\/\/(www\.)?hoplobby\.com$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/, /^https?:\/\/[a-z0-9-]+\.localhost(:\d+)?$/];
   var framed = global.parent && global.parent !== global;
@@ -46,6 +49,12 @@
   var relayWasOpen = false;
   var online = null;
   var warned = {};
+  // The game's Esc-menu settings (menu.set) and the player's values for them.
+  var menuSettings = [];
+  var prefs = {};
+  var lastGraphics = null;
+  // The game session (pre-match lobby, rounds, rematch): the page's last snapshot, or the standalone stand-in.
+  var session = null;
 
   function warnOnce(key, text) {
     if (warned[key]) return;
@@ -212,6 +221,51 @@
     return request(method, params, 'storage');
   }
 
+  // ---- graphics presets: the same table as HopLobby's own games (packages/shared/src/platform.ts GRAPHICS_PROFILES)
+  var PRESETS = ['potato', 'low', 'medium', 'high', 'ultra'];
+  var PROFILES = {
+    potato: { pixelRatio: 0.7, shadows: 'off', antialias: false, effects: false, particles: 0.25, drawDistance: 0.45, textureScale: 0.5 },
+    low: { pixelRatio: 1, shadows: 'off', antialias: true, effects: false, particles: 0.5, drawDistance: 0.65, textureScale: 0.5 },
+    medium: { pixelRatio: 1.25, shadows: 'simple', antialias: true, effects: true, particles: 0.75, drawDistance: 0.8, textureScale: 1 },
+    high: { pixelRatio: 1.5, shadows: 'soft', antialias: true, effects: true, particles: 1, drawDistance: 1, textureScale: 1 },
+    ultra: { pixelRatio: 2, shadows: 'soft', antialias: true, effects: true, particles: 1, drawDistance: 1, textureScale: 1 },
+  };
+  function autoLevel() {
+    var cores = navigator.hardwareConcurrency || 8, memory = navigator.deviceMemory || 8;
+    var mobile = Math.min(screen.width, screen.height) < 600;
+    if (cores <= 2 || memory <= 2) return 'potato';
+    if (mobile || cores <= 4 || memory <= 4) return 'low';
+    if (cores >= 12 && memory >= 8) return 'high';
+    return 'medium';
+  }
+  function withLevel(settings) {
+    if (PRESETS.indexOf(settings.graphicsLevel) < 0) settings.graphicsLevel = PRESETS.indexOf(settings.graphics) >= 0 ? settings.graphics : autoLevel();
+    return settings;
+  }
+  function graphicsProfile() {
+    var settings = context ? context.settings : withLevel(defaultSettings());
+    var level = PRESETS.indexOf(settings.graphicsLevel) >= 0 ? settings.graphicsLevel : 'medium';
+    var profile = { level: level, auto: PRESETS.indexOf(settings.graphics) < 0 }, base = PROFILES[level], key;
+    for (key in base) if (Object.prototype.hasOwnProperty.call(base, key)) profile[key] = base[key];
+    return profile;
+  }
+
+  // ---- menu settings: defaults from what the game declared, the player's values over them
+  var LOCAL_PREFS = 'hoplobby.prefs';
+  function defaultsOf(list) {
+    var out = {};
+    (Array.isArray(list) ? list : []).forEach(function (item) { if (item && typeof item.key === 'string') out[item.key] = item['default']; });
+    return out;
+  }
+  function pick(list, values) {
+    var out = defaultsOf(list);
+    if (values && typeof values === 'object') for (var key in out) if (Object.prototype.hasOwnProperty.call(values, key) && values[key] !== undefined) out[key] = values[key];
+    return out;
+  }
+  function localPrefs() {
+    try { return JSON.parse(global.localStorage.getItem(LOCAL_PREFS) || '{}') || {}; } catch (e) { return {}; }
+  }
+
   function onMessage(event) {
     if (event.source !== global.parent) return;
     var data = event.data;
@@ -233,8 +287,14 @@
         ctx.joinedLate = !!ctx.joinedLate;
         ctx.store = !!ctx.store;
         ctx.device = ctx.device || guessDevice();
-        ctx.settings = ctx.settings || defaultSettings();
+        ctx.settings = withLevel(ctx.settings || defaultSettings());
+        ctx.options = merge(merge(defaultsOf(initOptions.lobbyOptions), initOptions.options), ctx.options);
+        ctx.prefs = ctx.prefs && typeof ctx.prefs === 'object' ? ctx.prefs : {};
+        // A page from before 1.7 has no session: context.session stays null and games start on init as before.
+        session = ctx.session && typeof ctx.session === 'object' ? ctx.session : null;
+        ctx.session = session;
         context = ctx;
+        lastGraphics = JSON.stringify(graphicsProfile());
         wantState = ctx.joinedLate;
         if (compare(ctx.release, RELEASE) > 0) warnOnce('newer', 'HopLobby runs SDK ' + ctx.release + ' and this game loads ' + RELEASE + '. Load https://hoplobby.com/sdk/v1/hoplobby.js to get the newest features.');
         emit('_init', context);
@@ -278,12 +338,33 @@
         break;
       case 'settings':
         if (!context) return;
-        if (data.settings) context.settings = data.settings;
+        if (data.settings) context.settings = withLevel(data.settings);
         if (data.device) context.device = data.device;
         emit('settings', context.settings, context.device);
+        var graphics = graphicsProfile(), seen = JSON.stringify(graphics);
+        if (seen !== lastGraphics) { lastGraphics = seen; emit('graphics', graphics); }
         break;
       case 'chat': emit('chat', data.message); break;
       case 'purchase': emit('purchase', data.entitlement); break;
+      case 'prefs':
+        if (!data.prefs || typeof data.prefs !== 'object') return;
+        prefs = pick(menuSettings, data.prefs);
+        emit('prefs', prefs, data.key);
+        break;
+      case 'menu-action': emit('menuAction', data.id); break;
+      case 'options':
+        if (!context || !data.options) return;
+        context.options = merge(merge(defaultsOf(initOptions.lobbyOptions), initOptions.options), data.options);
+        emit('options', context.options);
+        break;
+      case 'session': {
+        if (!context || !data.session || typeof data.session !== 'object') return;
+        var previous = session;
+        session = data.session;
+        context.session = session;
+        emit('session', session, previous);
+        break;
+      }
       case 'pause': emit('pause'); break;
       case 'resume': emit('resume'); break;
       case 'response': {
@@ -320,16 +401,32 @@
     };
   }
   function defaultSettings() {
-    return { audio: { master: 0.8, music: 0.48, sfx: 0.72, muted: false }, graphics: 'auto', sensitivity: 1, invertY: false, fov: 100, shake: true };
+    return { audio: { master: 0.8, music: 0.48, sfx: 0.72, muted: false }, graphics: 'auto', graphicsLevel: autoLevel(), sensitivity: 1, invertY: false, fov: 100, shake: true };
   }
   function standalone() {
     var id = 'standalone-player';
+    session = standaloneSession('playing', 1, id);
     return {
       sdk: VERSION, release: RELEASE, features: [], gameId: 'standalone', lobbyCode: 'LOCAL0', playerId: id, hostId: id, locale: (navigator.language || 'en'),
-      dev: true, standalone: true, options: merge(initOptions.options), lateJoin: false, joinedLate: false, store: false,
-      device: guessDevice(), settings: defaultSettings(),
+      dev: true, standalone: true, options: merge(defaultsOf(initOptions.lobbyOptions), initOptions.options), lateJoin: false, joinedLate: false, store: false, prefs: localPrefs(),
+      device: guessDevice(), settings: defaultSettings(), session: session,
       players: [{ id: id, name: 'You', isHost: true, isYou: true, signedIn: false }],
     };
+  }
+  // Standalone, the one player is always in a round: end() shows results, ready() then starts the next round.
+  function standaloneSession(phase, round, id) {
+    var at = Date.now();
+    return {
+      phase: phase, round: round, since: at, now: at, roster: [id], you: { inGame: true, ready: false, inRoster: true },
+      players: [{ id: id, name: 'You', inGame: 'in', ready: false }],
+    };
+  }
+  function standaloneStep(phase, round) {
+    var previous = session;
+    session = standaloneSession(phase, round, context.playerId);
+    context.session = session;
+    setTimeout(function () { emit('session', session, previous); });
+    return Promise.resolve(session);
   }
   function placeholderAvatar(size) {
     var canvas = document.createElement('canvas');
@@ -342,6 +439,13 @@
     return canvas.toDataURL('image/png');
   }
   function now() { return Date.now() + clockOffset; }
+  // Dev Mode lobbies take the declared list from the developer's own frame; published games' come from their submission.
+  function declareLobbyOptions(list) {
+    if (!supports('lobby-options')) { warnOnce('lobby-options', 'this HopLobby page can’t take lobby options from the game. Declare them on your submission (or in Dev Mode’s Test setup).'); return; }
+    request('lobby.options', { options: list }).then(function (result) {
+      if (result && !result.applied && result.reason) warnOnce('lobby-options', result.reason);
+    }, function (error) { warnOnce('lobby-options', 'lobbyOptions: ' + error.message.replace(/^HopLobby: /, '')); });
+  }
 
   var HopLobby = {
     /** The protocol version (the /sdk/v1/ in the address). Additions never change it. */
@@ -351,9 +455,11 @@
 
     /**
      * Connect to HopLobby. Resolves with the context: { gameId, lobbyCode, playerId, hostId, players, locale, dev,
-     * options, lateJoin, joinedLate, device, settings, store, release, features }.
+     * options, lateJoin, joinedLate, device, settings, store, session, release, features }.
      * options: { timeoutMs, captureErrors (default true: uncaught errors go to your portal's Errors page),
-     * options (defaults for your lobby options, used standalone and for any key the lobby doesn't have),
+     * lobbyOptions (your lobby options: [{ key, label, type: 'choice' | 'toggle' | 'range', …, default }]. A Dev Mode lobby
+     * shows them in Match settings from then on; a published game's come from its submission, and you're warned in the
+     * console when this list differs), options (defaults for lobby option keys, used standalone and for any key the lobby doesn't have),
      * telemetry (default true: frame-rate summaries for your portal's Analytics page), build (your own build label,
      * e.g. '1.4.2', so errors and performance can be compared per build) }.
      * Outside HopLobby it resolves straight away with a one-player context that has `standalone: true`.
@@ -380,7 +486,11 @@
           // Nothing secret here: the page answers only its own frame, and we only listen to hoplobby.com.
           global.parent.postMessage({ hl: 'sdk', type: 'hello', version: VERSION, release: RELEASE, build: buildLabel() }, '*');
         }, 250);
-        HopLobby.on('_init', function (ctx) { clearInterval(hello); resolve(ctx); });
+        HopLobby.on('_init', function (ctx) {
+          clearInterval(hello);
+          if (initOptions.lobbyOptions !== undefined) declareLobbyOptions(initOptions.lobbyOptions);
+          resolve(ctx);
+        });
         global.parent.postMessage({ hl: 'sdk', type: 'hello', version: VERSION, release: RELEASE, build: buildLabel() }, '*');
       });
       return initPromise;
@@ -394,20 +504,87 @@
     get me() { return context ? byId(context.playerId) : null; },
     /** True when you host the lobby. The host can change if they leave: listen to on('host'). */
     get isHost() { return isHost(); },
-    /** The lobby options the host picked, e.g. { rounds: 5, hardMode: false }. Declared on your submission (or in Dev Mode). */
-    get options() { return context ? context.options : merge(initOptions.options); },
+    /** The lobby options the host picked, e.g. { rounds: 5, hardMode: false }. Declared with init({ lobbyOptions }) in Dev Mode, and on your submission. */
+    get options() { return context ? context.options : merge(defaultsOf(initOptions.lobbyOptions), initOptions.options); },
+    /**
+     * The player's graphics preset as numbers to render with: { level ('potato' | 'low' | 'medium' | 'high' | 'ultra'),
+     * auto, pixelRatio, shadows ('off' | 'simple' | 'soft'), antialias, effects, particles, drawDistance, textureScale }.
+     * Every HopLobby game follows it (platform rule). on('graphics', profile) fires when it changes.
+     */
+    get graphics() { return graphicsProfile(); },
+    /** The player's values for your menu settings (menu.set), e.g. { crosshair: 'dot', autoReload: true }. on('prefs') fires on a change. */
+    get prefs() { return prefs; },
+    /**
+     * Your game's part of HopLobby's Esc menu (no menu of your own needed):
+     *   set({ settings, controls, actions, shared, controlsNote }) → Promise of the player's values (also HopLobby.prefs).
+     *   settings: personal settings, the same shape as lobby options ({ key, label, hint?, type: 'toggle' | 'range' | 'choice', … ,
+     *     default }) plus section: 'game' (default, your own tab) | 'graphics' | 'audio' | 'controls'. Up to 24, saved per player on their device.
+     *   controls: your key list for the Controls page: [{ title, keys: [{ keys: ['W', 'A', 'S', 'D'], action: 'Move' }] }].
+     *   actions: up to 4 buttons under Resume: [{ id: 'restart', label: 'Restart round' }] → on('menuAction', id).
+     *   shared: which of HopLobby's settings your game uses ('graphics', 'fov', 'shake', 'audio', 'sensitivity', 'invertY', 'touch');
+     *     default all. Graphics quality is always shown. Labels are text or { en, 'pt-PT' }.
+     *   open(view?): open the menu yourself ('main', 'settings' or 'controls'), e.g. from your own settings button.
+     */
+    menu: {
+      set: function (menu) {
+        menu = menu || {};
+        menuSettings = Array.isArray(menu.settings) ? menu.settings : [];
+        if (!context || context.standalone || !supports('menu')) {
+          if (context && !context.standalone) warnOnce('menu', 'this HopLobby page can’t show your menu settings yet: using their defaults.');
+          prefs = pick(menuSettings, context ? context.prefs : localPrefs());
+          return Promise.resolve(prefs);
+        }
+        prefs = pick(menuSettings, context.prefs);
+        return request('menu.set', { menu: menu }, 'menu').then(function (result) {
+          prefs = pick(menuSettings, result && result.prefs);
+          return prefs;
+        }, function (error) {
+          warnOnce('menu-error', 'menu.set: ' + error.message.replace(/^HopLobby: /, ''));
+          throw error;
+        });
+      },
+      open: function (view) { return post({ type: 'menu-open', view: view === 'settings' || view === 'controls' ? view : 'main' }); },
+    },
     /** { touch, mobile, gamepad, width, height, pixelRatio, reducedMotion }. Updated with on('settings'). */
     get device() { return context ? context.device : guessDevice(); },
     /** The player's HopLobby settings: { audio: { master, music, sfx, muted }, graphics, sensitivity, invertY, fov, shake }. */
     get settings() { return context ? context.settings : defaultSettings(); },
-    /** Does this HopLobby page support a feature? 'results', 'options', 'clock', 'state', 'device', 'errors', 'chat', 'store', 'late-join', 'storage', 'leaderboards', 'achievements', 'telemetry'. */
+    /** Does this HopLobby page support a feature? 'results', 'options', 'clock', 'state', 'device', 'errors', 'chat', 'store', 'late-join', 'storage', 'leaderboards', 'achievements', 'telemetry', 'menu', 'lobby-options', 'session'. */
     supports: supports,
+
+    /**
+     * The game session (1.7): HopLobby's pre-match lobby, the rounds and the rematch around your game. HopLobby runs it
+     * all (who's ready, the countdown, the rematch window); your game follows it.
+     *   get() → the latest { phase: 'lobby' | 'countdown' | 'playing' | 'results', round, since, deadline?, now, roster,
+     *     you: { inGame, ready, inRoster }, players: [{ id, name, inGame: 'loading' | 'in' | null, ready }], winners? },
+     *     or null on a page without sessions. on('session', (session, previous) => {}) fires on every change.
+     *   ready(ready = true) → Promise of the new session: Ready (or not) for the next round, as HopLobby's Ready button.
+     *     Not HopLobby.ready(), which still means "finished loading".
+     *   end(results?) → Promise: host only, finish the round with your results (as endGame), then the rematch window.
+     * Start your match when phase becomes 'playing' with a new round and you're in roster; a later 'playing' with a
+     * higher round is a rematch: reset and start again. With session: true on your submission (Dev Mode: Test setup)
+     * your frame stays loaded through all of it; otherwise HopLobby loads it fresh for each round.
+     * Standalone, you're always in a round: end() goes to 'results' and ready() then starts the next round.
+     */
+    session: {
+      get: function () { return session; },
+      ready: function (ready) {
+        if (context && context.standalone) return session && session.phase === 'results' && ready !== false ? standaloneStep('playing', session.round + 1) : Promise.resolve(session);
+        return request('session.ready', { ready: ready !== false }, 'session').then(function (next) { return next || session; });
+      },
+      end: function (results) {
+        var params = {};
+        if (results && typeof results === 'object' && results.entries) params.results = { title: results.title, entries: results.entries };
+        if (context && context.standalone) return session && session.phase === 'playing' ? standaloneStep('results', session.round) : Promise.resolve(session);
+        return request('session.end', params, 'session').then(function (next) { return next || session; });
+      },
+    },
 
     /** Report loading progress (0..1) while HopLobby shows its loading screen. `label` is shown under the bar. */
     progress: function (fraction, label) {
       post({ type: 'progress', fraction: Math.max(0, Math.min(1, Number(fraction) || 0)), label: label ? String(label).slice(0, 60) : undefined });
     },
-    /** Your game is ready to be seen: HopLobby fades its loading screen out. */
+    /** Your game is ready to be seen: HopLobby fades its loading screen out. (Ready for a round is HopLobby.session.ready().) */
     ready: function () {
       if (readySent) return;
       readySent = true;
@@ -562,7 +739,9 @@
     /**
      * Events: 'message' (data, fromPlayerId), 'players' (players, hostId), 'join' (player), 'leave' (player),
      * 'host' (newHostId, oldHostId), 'peers' (ids connected to the relay now), 'relay' ('connecting' | 'open' | 'closed'),
-     * 'state' (state, fromHostId), 'settings' (settings, device), 'chat' (message), 'purchase' (entitlement), 'achievement' (achievement),
+     * 'state' (state, fromHostId), 'settings' (settings, device), 'graphics' (profile), 'prefs' (prefs, changedKey), 'menuAction' (id),
+     * 'options' (options: the lobby's changed mid-game), 'chat' (message), 'purchase' (entitlement), 'achievement' (achievement),
+     * 'session' (session, previous: the pre-match lobby, rounds and rematch, 1.7),
      * 'pause' and 'resume' (HopLobby's menu opened or closed). Returns a function that removes the listener.
      */
     on: function (event, fn) {

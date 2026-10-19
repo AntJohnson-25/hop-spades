@@ -16,11 +16,11 @@ globalThis.HS = globalThis.HS || {};
 
   V.init = function (canvas, quality) {
     V.canvas = canvas;
-    V.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: quality !== "low", powerPreference: "high-performance" });
+    V.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: quality !== "low" && quality !== "potato", powerPreference: "high-performance" });
     V.renderer.outputColorSpace = THREE.SRGBColorSpace;
     V.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     V.renderer.toneMappingExposure = 1.15;
-    V.renderer.shadowMap.enabled = quality !== "low";
+    V.renderer.shadowMap.enabled = quality === "medium" || quality === "high";
     V.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     V.scene = new THREE.Scene();
     V.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.03, 3000);
@@ -32,9 +32,12 @@ globalThis.HS = globalThis.HS || {};
   V.setQuality = function (q) {
     V.quality = q;
     const dpr = window.devicePixelRatio || 1;
-    V.renderer.setPixelRatio(Math.min(dpr, q === "high" ? 2 : q === "medium" ? 1.5 : 1));
-    V.renderer.shadowMap.enabled = q !== "low";
-    if (HS.Room && HS.Room.spot) HS.Room.spot.castShadow = q !== "low";
+    // Potato renders below 1 (the biggest saving on a weak machine); the shadows, the coloured wash lights and the crowd of bulbs follow the preset too.
+    V.renderer.setPixelRatio(Math.min(dpr, q === "high" ? 2 : q === "medium" ? 1.5 : q === "low" ? 1 : 0.7));
+    const shadows = q === "medium" || q === "high";
+    V.renderer.shadowMap.enabled = shadows;
+    if (HS.Room && HS.Room.spot) HS.Room.spot.castShadow = shadows;
+    if (HS.Room && HS.Room.setDetail) HS.Room.setDetail(q);
     V.resize();
   };
   // Horizontal field of view (HopLobby's setting is horizontal degrees on 16:9).

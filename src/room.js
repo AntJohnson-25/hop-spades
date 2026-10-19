@@ -765,14 +765,19 @@ globalThis.HS = globalThis.HS || {};
     halo(bulbs, 0.32, 0xffb860, 0.7);
     // A coloured wash over the roof: cyan by the water tower, magenta by the stair door, amber
     // over the lounge side. Real lights, so only above Low.
-    if (quality !== "low") {
-      [[0x4fd8ff, -7.5, 1.6, -8.4, 5], [0xff5fc8, 8.6, 1.8, 3.6, 4], [0xffa24a, -8.5, 1.8, 6.5, 4]].forEach(function (L) {
-        const l = new THREE.PointLight(L[0], L[4], 10, 1.7);
-        l.position.set(L[1], L[2], L[3]);
-        scene.add(l);
-      });
-    }
+    Room.wash = [];
+    [[0x4fd8ff, -7.5, 1.6, -8.4, 5], [0xff5fc8, 8.6, 1.8, 3.6, 4], [0xffa24a, -8.5, 1.8, 6.5, 4]].forEach(function (L) {
+      const l = new THREE.PointLight(L[0], L[4], 10, 1.7);
+      l.position.set(L[1], L[2], L[3]);
+      scene.add(l); Room.wash.push(l);
+    });
   }
+  // Graphics preset: the real wash lights (a cost on every lit pixel) only from Medium up, and
+  // the bulb halos only from Low up (HopLobby presets: potato, low, medium, high).
+  Room.setDetail = function (q) {
+    (Room.wash || []).forEach(function (l) { l.visible = q === "medium" || q === "high"; });
+    (Room.halosAll || []).forEach(function (h) { h.visible = q !== "potato"; });
+  };
 
   // ------------------------------------------------------------------ the neon sign
   function neon(scene, b) {

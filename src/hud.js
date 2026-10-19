@@ -295,8 +295,8 @@ globalThis.HS = globalThis.HS || {};
     const cutsUs = st.cuts[us] + st.cuts[us + 2], cutsThem = st.cuts[1 - us] + st.cuts[3 - us];
     const per = [0, 1, 2, 3].map(function (s) { return "<div>" + esc(nameOf(st, s, seat)) + ": " + esc(t("cutsLine", st.cuts[s])) + (st.cov[s] ? " · " + esc(t("coversLine", st.cov[s])) : "") + "</div>"; }).join("");
     let btns = "";
-    if (o.canRestart) btns += "<button type='button' class='primary' id='fAgain'>" + esc(o.online ? t("playAgainHost") : t("playAgain")) + "</button>";
-    else btns += "<div class='sum-notes' style='text-align:center'>" + esc(t("waitNext")) + "</div>";
+    // Inside HopLobby the rematch is HopLobby's (platform rule): no play-again of our own. Stand up, or sit down again for another game; the host's End game hands everyone to HopLobby's results.
+    if (!o.online) btns += "<button type='button' class='primary' id='fAgain'>" + esc(t("playAgain")) + "</button>";
     if (o.online && o.host) btns += "<button type='button' id='fEnd'>" + esc(t("endAll")) + "</button>";
     btns += "<button type='button' id='fBack'>" + esc(t("standUp")) + "</button>";
     const html = "<div class='final-title " + (won && seat >= 0 ? "win" : "") + "'>" + esc(seat < 0 ? t("teamWins", st.win === 0 ? names.us : names.them) : won ? t("youWin") : t("youLose")) + "</div>" +

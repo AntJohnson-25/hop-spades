@@ -4,7 +4,14 @@
   "minPlayers": 1,
   "maxPlayers": 12,
   "lateJoin": true,
-  "options": [],
+  "options": [
+    { "key": "timer", "label": { "en": "Turn timer", "pt-PT": "Tempo por jogada" }, "type": "choice", "default": 30,
+      "choices": [ { "value": 0, "label": "Off" }, { "value": 20, "label": "20 s" }, { "value": 30, "label": "30 s" }, { "value": 60, "label": "60 s" } ] },
+    { "key": "target", "label": { "en": "Game to", "pt-PT": "Jogo até" }, "type": "choice", "default": 500,
+      "choices": [ { "value": 500, "label": "500" }, { "value": 300, "label": "300" } ] },
+    { "key": "blindNil", "label": { "en": "Blind nil", "pt-PT": "Nil às cegas" }, "type": "toggle", "default": true },
+    { "key": "chaos", "label": { "en": "Chaos bots", "pt-PT": "Bots caóticos" }, "hint": "Bots sometimes play silly cards", "type": "toggle", "default": false }
+  ],
   "leaderboards": [],
   "achievements": [],
   "store": [],

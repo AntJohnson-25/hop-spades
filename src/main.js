@@ -26,6 +26,22 @@ globalThis.HS = globalThis.HS || {};
     viewK: 0, boardsAt: 0
   };
   const DEBUG = /[?&]debug=1\b/.test(location.search);
+  // The match rules the host picks in HopLobby's lobby (kept identical to "options" in hoplobby.json).
+  const LOBBY_OPTIONS = [
+    { key: "timer", label: { en: "Turn timer", "pt-PT": "Tempo por jogada" }, type: "choice", default: 30,
+      choices: [{ value: 0, label: "Off" }, { value: 20, label: "20 s" }, { value: 30, label: "30 s" }, { value: 60, label: "60 s" }] },
+    { key: "target", label: { en: "Game to", "pt-PT": "Jogo até" }, type: "choice", default: 500,
+      choices: [{ value: 500, label: "500" }, { value: 300, label: "300" }] },
+    { key: "blindNil", label: { en: "Blind nil", "pt-PT": "Nil às cegas" }, type: "toggle", default: true },
+    { key: "chaos", label: { en: "Chaos bots", "pt-PT": "Bots caóticos" }, hint: "Bots sometimes play silly cards", type: "toggle", default: false }
+  ];
+  function applyLobbyOptions(o) {
+    if (!o) return;
+    if (o.timer !== undefined) G.opts.timer = +o.timer;
+    if (o.target !== undefined) G.opts.target = +o.target;
+    if (o.blindNil !== undefined) G.opts.blindNil = !!o.blindNil;
+    if (o.chaos !== undefined) G.opts.chaos = !!o.chaos;
+  }
   function inLobby() { return !!G.hl && !G.hl.standalone; }
   function tierName(k) { const T0 = Room.TABLES[k] || Room.TABLES[0]; return t("tier" + T0.tier); }
 
@@ -39,10 +55,14 @@ globalThis.HS = globalThis.HS || {};
   }
   function savePrefs() { try { localStorage.setItem("hop-spades:prefs", JSON.stringify(Object.assign({}, G.prefs, { opts: G.opts }))); } catch (e) { /* ignore */ } }
   function setLoad(f, msg) { $("loadFill").style.width = (f * 100) + "%"; if (msg) $("loadMsg").textContent = msg; HopLobby.progress(f, msg); }
+  // Our four looks from HopLobby's preset (HopLobby.graphics.level, Auto already resolved).
   function qualityFrom(settings, device) {
+    const forced = /[?&]g=(potato|low|medium|high)\b/.exec(location.search);   // test hook
+    if (forced) return forced[1];
     if (G.prefs.quality && !inLobby()) return G.prefs.quality;
-    const g = settings && settings.graphics;
-    if (g === "potato" || g === "low") return "low";
+    const g = (HopLobby.graphics && HopLobby.graphics.level) || (settings && (settings.graphicsLevel || settings.graphics));
+    if (g === "potato") return "potato";
+    if (g === "low") return "low";
     if (g === "medium") return "medium";
     if (g === "high" || g === "ultra") return "high";
     return device && device.mobile ? "medium" : "high";
@@ -62,6 +82,31 @@ globalThis.HS = globalThis.HS || {};
     if (!own && View.renderer) { const q = qualityFrom(s, G.hlDevice); if (q !== View.quality) View.setQuality(q); }
     if ($("settings") && !$("settings").hidden) syncSettings();
   }
+  // This player's settings and key list live in HopLobby's Esc menu (platform rule).
+  function setupHopMenu() {
+    if (!inLobby() || !HopLobby.menu) return;
+    const take = function (p) {
+      if (!p) return;
+      ["reactAuto", "assist", "zoomAuto", "tags"].forEach(function (k) { if (p[k] !== undefined) G.prefs[k] = !!p[k]; });
+      if ($("settings") && !$("settings").hidden) syncSettings();
+    };
+    HopLobby.menu.set({
+      settings: [
+        { key: "reactAuto", label: { en: t("reactAuto"), "pt-PT": "Reações automáticas" }, type: "toggle", default: true },
+        { key: "assist", label: { en: t("assist"), "pt-PT": "Realçar cartas jogáveis" }, type: "toggle", default: true },
+        { key: "zoomAuto", label: { en: t("zoomAuto"), "pt-PT": "Ampliar cada carta jogada" }, type: "toggle", default: false },
+        { key: "tags", label: { en: t("tags"), "pt-PT": "Etiquetas dos jogadores" }, type: "toggle", default: true }
+      ],
+      controls: [
+        { title: "Walking", keys: [{ keys: ["W", "A", "S", "D"], action: "Walk" }, { keys: ["Shift"], action: "Hurry" }, { keys: ["E"], action: "Sit down" }] },
+        { title: "At the table", keys: [{ keys: ["Mouse"], action: "Hover a card to lift it, click to play" }, { keys: ["1", "2", "3", "4"], action: "Look at partner, left, right, trick" }, { keys: ["Space"], action: "Look at your hand" }, { keys: ["Left", "Right", "Enter"], action: "Pick and play a card" }, { keys: ["R"], action: "Reactions" }, { keys: ["Z"], action: "Zoom the last card" }, { keys: ["Tab"], action: "Score sheet (hold)" }, { keys: ["Q"], action: "Stand up" }, { keys: ["H"], action: "Rules" }] }
+      ],
+      actions: [{ id: "rules", label: "Rules" }],
+      shared: ["graphics", "audio", "sensitivity", "invertY", "fov", "touch"]
+    }).then(take, function (err) { console.warn("menu.set", err); });
+    HopLobby.on("prefs", function (p) { take(p); });
+    HopLobby.on("menuAction", function (id) { if (id === "rules") toggle("rulesBox"); });
+  }
   // The options for a game at table k: the host's choices, the table's bots.
   function optsFor(k) { return Object.assign({}, G.opts, { level: (Room.TABLES[k] || Room.TABLES[0]).level }); }
 
@@ -76,8 +121,10 @@ globalThis.HS = globalThis.HS || {};
     document.addEventListener("touchend", function (e) { const n = Date.now(); if (n - lastTouchEnd < 350) e.preventDefault(); lastTouchEnd = n; }, { passive: false });
     document.addEventListener("gesturestart", function (e) { e.preventDefault(); });
     Net.autoSeat = false;   // the walk-up rooftop: people sit down themselves
-    HopLobby.init({ build: "1.1.0", options: {} }).then(function (ctx) {
+    HopLobby.init({ build: "1.2.0", lobbyOptions: LOBBY_OPTIONS, options: { timer: 30, target: 500, blindNil: true, chaos: false } }).then(function (ctx) {
       G.hl = ctx;
+      document.body.classList.toggle("in-hop", inLobby());
+      if (inLobby()) applyLobbyOptions(ctx.options);
       Net.init(ctx, {
         opts: optsFor,
         pos: function (id, x, z, yaw, m) { Walk.heard(id, x, z, yaw, m); },
@@ -90,6 +137,9 @@ globalThis.HS = globalThis.HS || {};
       if (ctx.device && ctx.device.touch) document.body.classList.add("touch");
       if ($("hlSet")) syncSettings();
       HopLobby.on("settings", function (s, d) { applySettings(s, d); });
+      HopLobby.on("graphics", function () { if (View.renderer) { const q = qualityFrom(G.hlSettings, G.hlDevice); if (q !== View.quality) View.setQuality(q); } });
+      HopLobby.on("options", function (o) { if (inLobby()) { applyLobbyOptions(o); syncMenu(); } });
+      setupHopMenu();
       if (Net.online()) HopLobby.players.forEach(function (p) { Seats.requestAvatar(p.id); });
       HopLobby.on("players", function (ps) { ps.forEach(function (p) { Seats.requestAvatar(p.id); }); syncMenu(); });
       syncMenu();
@@ -108,6 +158,7 @@ globalThis.HS = globalThis.HS || {};
       setLoad(0.25, t("boot2"));
       setTimeout(function () {
         Room.build(View.scene, View.renderer, q);
+        Room.setDetail(View.quality);
         Cards.init(View.scene);
         setLoad(0.5, t("boot3"));
         H.init({ bid: onBid, look: function () { G.looked = true; }, react: onReact, dealNow: dealNow, again: playAgain, endAll: endAll, back: standUp });
@@ -722,7 +773,11 @@ globalThis.HS = globalThis.HS || {};
     H.zoom(Net.st, Net.seat, G.lastPlay);
   }
   function toggle(id) { $(id).hidden = !$(id).hidden; }
-  function toggleSettings() { toggle("settings"); syncSettings(); }
+  // Inside HopLobby the settings are HopLobby's own menu (our panel is for standalone testing).
+  function toggleSettings() {
+    if (inLobby() && HopLobby.menu && HopLobby.menu.open) { HopLobby.menu.open("settings"); return; }
+    toggle("settings"); syncSettings();
+  }
   function setSound(on) { G.prefs.sound = on; A.setOn(on); syncSettings(); savePrefs(); }
   function syncSettings() {
     // Inside HopLobby: its settings, read-only, in place of our own sound / graphics / look speed.
