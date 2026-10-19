@@ -275,7 +275,7 @@ globalThis.HS = globalThis.HS || {};
     g.save(); g.translate(S / 2, S / 2);
     g.font = "700 40px Georgia, 'Times New Roman', serif"; g.textAlign = "center"; g.fillStyle = "rgba(226,190,110,0.55)";
     // Lettering around the ring.
-    const text = f && f.text || "♠ HOP SPADES ♠ ROOFTOP CLUB ";
+    const text = f && f.text || "♠ ROOFTOP SPADES ♠ CTSG CLUB ";
     const R = S * 0.37;
     for (let k = 0; k < 2; k++) {
       for (let i = 0; i < text.length; i++) {

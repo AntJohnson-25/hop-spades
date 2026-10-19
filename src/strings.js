@@ -5,7 +5,7 @@ globalThis.HS = globalThis.HS || {};
 (function (HS) {
   "use strict";
   const EN = {
-    title: "HOP SPADES", tag: "Partnership Spades on a city rooftop. You and the player across the table are a team.",
+    title: "ROOFTOP SPADES", tag: "Partnership Spades on a city rooftop. You and the player across the table are a team.",
     play: "Play", playSolo: "Play", howTo: "How to play", rules: "Rules", settings: "Settings",
     bots: "Bots", easy: "Easy", normal: "Normal", sharp: "Sharp",
     timer: "Turn timer", off: "Off", on: "On", secs: "{0} s",

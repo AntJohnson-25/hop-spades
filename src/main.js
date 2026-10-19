@@ -293,7 +293,7 @@ globalThis.HS = globalThis.HS || {};
       if (s[1] || !s[2]) return;
       entries.push({ playerId: s[2], place: R.team(i) === st.win ? 1 : 2, score: st.sc[R.team(i)], label: R.team(i) === st.win ? "Won" : "Lost" });
     });
-    HopLobby.endGame({ title: "Hop Spades", entries: entries });
+    HopLobby.endGame({ title: "Rooftop Spades", entries: entries });
   }
   function dealNow() { if (Net.runs() && Net.t) { T.nextHand(Net.t, Net.now()); Net.step(); } }
 
@@ -467,6 +467,7 @@ globalThis.HS = globalThis.HS || {};
     const faceDown = playing && st.ph === "bid" && st.bl[seat] && st.o.blind && st.bids[seat] === null && !G.looked;
     Cards.hover = G.hover; Cards.picked = G.picked;
     Cards.update({ st: st, hand: playing ? hand : [], seat: seat, eye: Seats.eye, legal: legal, assist: G.prefs.assist, faceDown: faceDown, dt: dt });
+    if (playing) H.hand({ cards: hand.slice(0, Cards.mineDealt), legal: legal, assist: G.prefs.assist, picked: G.picked, hover: G.hover, faceDown: faceDown, turn: myTurn && st.ph === "play" });
     // Turn the felt so its printed emblem (the HopLobby symbol) is upright from your seat.
     if (Room.felt) Room.felt.rotation.z = playing ? Room.seatYaw(seat) : 0;
     View.update({ mode: playing ? "seat" : G.mode === "walk" ? "walk" : "orbit", seat: seat, eye: Seats.eye, dt: dt, t: G.t, spectate: false, slow: true, focus: Walk.focus(_focus), clamp: Room.clampCam });
@@ -603,6 +604,47 @@ globalThis.HS = globalThis.HS || {};
     };
     cv.addEventListener("pointerup", up);
     cv.addEventListener("pointercancel", function (e) { if (G.stick && e.pointerId === G.stick.id) { G.stick = null; $("stick").hidden = true; } drag = null; });
+    // Your hand, the strip along the bottom (as in Spades). A finger: tap a card (or slide
+    // along the strip) to lift it, then tap it again or press Play. A mouse: hover lifts,
+    // click plays. The tray on the table lifts the same card.
+    const dock = $("hand");
+    let hd = null;
+    const cardAt = function (x, y) {
+      const el = document.elementFromPoint(x, y), b = el && el.closest ? el.closest(".hc") : null;
+      return b && dock.contains(b) ? +b.getAttribute("data-c") : -1;
+    };
+    dock.addEventListener("pointerdown", function (e) {
+      A.unlock();
+      const c = cardAt(e.clientX, e.clientY);
+      if (c < 0 || G.mode !== "play") return;
+      e.preventDefault();
+      hd = { id: e.pointerId, c: c, was: G.picked, moved: 0, x: e.clientX, y: e.clientY, touch: e.pointerType !== "mouse" };
+      if (hd.touch) document.body.classList.add("touch");
+      if (hd.touch && G.picked !== c) { G.picked = c; A.flick(); }
+      try { dock.setPointerCapture(e.pointerId); } catch (err) { /* ok */ }
+    });
+    dock.addEventListener("pointermove", function (e) {
+      if (hd && e.pointerId === hd.id) {
+        hd.moved += Math.abs(e.clientX - hd.x) + Math.abs(e.clientY - hd.y);
+        hd.x = e.clientX; hd.y = e.clientY;
+        const c = cardAt(e.clientX, e.clientY);
+        if (hd.touch && c >= 0 && c !== G.picked) { G.picked = c; A.flick(); }
+      } else if (e.pointerType === "mouse" && G.mode === "play") {
+        const c = cardAt(e.clientX, e.clientY);
+        if (c !== G.hover && c >= 0) A.flick();
+        G.hover = c;
+      }
+    });
+    const dockUp = function (e) {
+      if (!hd || e.pointerId !== hd.id) return;
+      const d = hd; hd = null;
+      if (e.type === "pointercancel" || d.moved > 12) return;
+      // A finger plays the card that was already lifted; a click plays straight away.
+      if (!d.touch || d.c === d.was) tryPlay(d.c);
+    };
+    dock.addEventListener("pointerup", dockUp);
+    dock.addEventListener("pointercancel", dockUp);
+    dock.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse" && !hd) G.hover = -1; });
     window.addEventListener("blur", function () { G.keys = {}; });
     window.addEventListener("keyup", function (e) { G.keys[e.key.toLowerCase()] = false; if (e.key === "Shift") G.keys.shift = false; if (e.key === "Tab") G.sheet = false; });
     window.addEventListener("keydown", function (e) {

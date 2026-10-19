@@ -4,23 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0b1022">
-<title>Hop Spades</title>
-<meta name="description" content="Hop Spades: partnership Spades in first person on a city rooftop at night. Play with friends as your own HopLobby avatar; bots fill the empty seats.">
-<link rel="stylesheet" href="style.css?v=2">
+<title>Rooftop Spades</title>
+<meta name="description" content="Rooftop Spades: partnership Spades in first person on a city rooftop at night. Play with friends as your own HopLobby avatar; bots fill the empty seats.">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <canvas id="view" aria-label="The card table"></canvas>
 
 <!-- Inside HopLobby its own loading screen covers this (HopLobby.progress drives it). -->
 <div id="loading" class="loading">
-  <div class="logo"><span class="sp">&#9824;</span> HOP <b>SPADES</b></div>
+  <div class="logo"><span class="sp">&#9824;</span> ROOFTOP <b>SPADES</b></div>
   <div class="load-bar"><span id="loadFill"></span></div>
   <div class="load-msg" id="loadMsg">&hellip;</div>
 </div>
 
 <div id="menu" class="menu" hidden>
   <div class="menu-card">
-    <div class="logo"><span class="sp">&#9824;</span> HOP <b>SPADES</b></div>
+    <div class="logo"><span class="sp">&#9824;</span> ROOFTOP <b>SPADES</b></div>
+    <div class="maker"><img src="assets/ctsg-seal.png" alt="">a CTSG game</div>
     <p class="tag" data-t="tag"></p>
     <div class="opts" id="opts">
       <div class="opt"><span class="opt-l" data-t="timer"></span><div class="seg" id="optTimer"><button type="button" data-v="0" data-t="off"></button><button type="button" data-v="20">20 s</button><button type="button" data-v="30">30 s</button><button type="button" data-v="60">60 s</button></div></div>
@@ -70,6 +71,7 @@
     </div>
   </div>
   <button type="button" id="btnPlayCard" class="play-card" hidden></button>
+  <div id="hand" class="hand" aria-label="Your hand"></div>
   <div id="zoom" class="zoom" hidden><canvas id="zoomCard" width="200" height="280"></canvas><div id="zoomCap" class="zoom-cap"></div></div>
   <div class="corner">
     <button type="button" id="btnStand" class="round stand" title="Stand up (Q)" data-t="standShort"></button>
@@ -134,9 +136,9 @@
    retried if the network drops it; then they run in this order (from Bladed).
    hoplobby.js is an unchanged copy of HopLobby SDK v1 (1.3.0). */
 (function () {
-  var FILES = ["hoplobby.js", "vendor/three.min.js", "vendor/GLTFLoader.js", "src/util.js?v=2", "src/strings.js?v=2", "src/rules.js?v=2", "src/bot.js?v=2",
-    "src/table.js?v=2", "src/net.js?v=2", "src/build.js?v=2", "src/room.js?v=2", "src/view.js?v=2", "src/cards.js?v=2", "src/seats.js?v=2", "src/walkers.js?v=2", "src/crews.js?v=2",
-    "src/audio.js?v=2", "src/hud.js?v=2", "src/tutorial.js?v=2", "src/main.js?v=2"];
+  var FILES = ["hoplobby.js", "vendor/three.min.js", "vendor/GLTFLoader.js", "src/util.js?v=3", "src/strings.js?v=3", "src/rules.js?v=3", "src/bot.js?v=3",
+    "src/table.js?v=3", "src/net.js?v=3", "src/build.js?v=3", "src/room.js?v=4", "src/view.js?v=3", "src/cards.js?v=4", "src/seats.js?v=3", "src/walkers.js?v=3", "src/crews.js?v=3",
+    "src/audio.js?v=3", "src/hud.js?v=4", "src/tutorial.js?v=3", "src/main.js?v=4"];
   function fail(src) {
     var el = document.getElementById("err");
     el.hidden = false;

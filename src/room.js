@@ -229,7 +229,9 @@ globalThis.HS = globalThis.HS || {};
     const c = B.canvas(1024, 512), g = c.getContext("2d");
     g.font = "900 190px 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
     g.shadowColor = "#5fe1ff"; g.shadowBlur = 50; g.strokeStyle = "#bff6ff"; g.lineWidth = 12;
-    g.strokeText("HOP", 512, 150); g.shadowBlur = 24; g.strokeText("HOP", 512, 150);
+    g.font = "900 150px 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif";
+    g.strokeText("ROOFTOP", 512, 150); g.shadowBlur = 24; g.strokeText("ROOFTOP", 512, 150);
+    g.font = "900 190px 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif";
     g.shadowColor = "#ff4fa3"; g.strokeStyle = "#ffd1e8"; g.shadowBlur = 50; g.strokeText("SPADES", 512, 360); g.shadowBlur = 22; g.strokeText("SPADES", 512, 360);
     const title = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.75), new THREE.MeshBasicMaterial({ map: B.tex(c), transparent: true, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending }));
     title.position.set(9.3, y, z - 0.022); title.rotation.y = Math.PI;
@@ -698,6 +700,80 @@ globalThis.HS = globalThis.HS || {};
     Room.lanternY = LY;
   }
 
+  // ------------------------------------------------------------------ more lights (user, 2026-10-19: "more lights to the rooftop")
+  // Cheap glow rather than real lights, which cost every lit pixel on a weak GPU: a lamp on
+  // every parapet pilaster with a string of bulbs between them, festoons linking the three
+  // decks, a coloured LED strip round each deck (its tier's colour), and a few small
+  // floor uplights. Three real point lights give the roof a coloured wash (not on Low).
+  function moreLights(b, scene, quality) {
+    const bulbs = [], lamps = [], H = 1.15, TOP = ROOF.y + H + 0.17;
+    const strand = function (a, c, sag, spacing) {
+      const len = Math.hypot(a[0] - c[0], a[2] - c[2]);
+      b.add("plastic", B.tube(B.catenary(a, c, sag, 14), 0.005, 28, 4), null, 0x1a1a1a);
+      const n = Math.max(2, Math.round(len / spacing));
+      for (let k = 1; k < n; k++) {
+        const t = k / n;
+        const p = [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t - sag * 4 * t * (1 - t), a[2] + (c[2] - a[2]) * t];
+        b.add("glow", B.sphere(0.026, 6, 4), M([p[0], p[1] - 0.04, p[2]]), 0xffd08a);
+        bulbs.push(p[0], p[1] - 0.04, p[2]);
+      }
+    };
+    // The parapet: a lamp on every pilaster (same spacing as roof()), bulbs between them.
+    const wall = function (x0, z0, x1, z1) {
+      const n = Math.floor(Math.hypot(x1 - x0, z1 - z0) / 3), tops = [];
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, px = x0 + (x1 - x0) * t, pz = z0 + (z1 - z0) * t;
+        b.add("metal", B.cyl(0.05, 0.07, 0.08, 8), M([px, TOP + 0.04, pz]), 0x2a2a2c);
+        b.add("glow", B.sphere(0.075, 10, 8), M([px, TOP + 0.15, pz], [0, 0, 0], [1, 1.2, 1]), 0xfff0c8);
+        lamps.push(px, TOP + 0.15, pz);
+        tops.push([px, TOP + 0.15, pz]);
+      }
+      for (let i = 0; i < n; i++) strand(tops[i], tops[i + 1], 0.22, 0.5);
+    };
+    wall(ROOF.x0, ROOF.z0, ROOF.x1, ROOF.z0); wall(ROOF.x1, ROOF.z0, ROOF.x1, ROOF.z1);
+    wall(ROOF.x1, ROOF.z1, ROOF.x0, ROOF.z1); wall(ROOF.x0, ROOF.z1, ROOF.x0, ROOF.z0);
+    // Festoons linking the first table's poles to the side decks' (all at pole height, 2.9 m).
+    const T0 = Room.TABLES[0], T1 = Room.TABLES[1], T2 = Room.TABLES[2], h = Room.DECK_HALF - 0.25, PH = 2.9;
+    strand([-3.25, PH, -3.25], [T1.x + h, PH, T1.z - h], 0.35, 0.42);
+    strand([-3.05, PH, 3.05], [T1.x + h, PH, T1.z + h], 0.35, 0.42);
+    strand([3.05, PH, -3.05], [T2.x - h, PH, T2.z - h], 0.35, 0.42);
+    strand([3.25, PH, 3.25], [T2.x - h, PH, T2.z + h], 0.35, 0.42);
+    void T0;
+    // An LED strip round each deck, in its tier's colour (Regular green, Rookie blue, Sharp red).
+    const LED = [0x7dffb0, 0x6fb6ff, 0xff6a78];
+    Room.TABLES.forEach(function (T, k) {
+      const half = k ? Room.DECK_HALF : 3.6, e = half - 0.05;
+      [[0, -e, half * 2 - 0.1, 0.05], [0, e, half * 2 - 0.1, 0.05], [-e, 0, 0.05, half * 2 - 0.1], [e, 0, 0.05, half * 2 - 0.1]].forEach(function (s) {
+        b.add("glow", B.box(s[2], 0.012, s[3]), M([T.x + s[0], 0.006, T.z + s[1]]), LED[k]);
+      });
+      // Four little uplights in the deck's corners.
+      [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (s) {
+        const x = T.x + s[0] * (half - 0.22), z = T.z + s[1] * (half - 0.22);
+        b.add("metal", B.cyl(0.07, 0.09, 0.14, 10), M([x, 0.07, z]), 0x232326);
+        b.add("glow", B.sphere(0.055, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), M([x, 0.14, z]), 0xffe2a8);
+        lamps.push(x, 0.2, z);
+      });
+    });
+    // Glow halos: the parapet lamps and the bulbs, one draw call each.
+    const halo = function (arr, size, color, opacity) {
+      const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(arr), 3));
+      const p = new THREE.Points(g, new THREE.PointsMaterial({ map: B.glowTex(0.1), color: color, size: size, sizeAttenuation: true, transparent: true, opacity: opacity, depthWrite: false, blending: THREE.AdditiveBlending }));
+      p.renderOrder = 5; p.frustumCulled = false;
+      scene.add(p); (Room.halosAll = Room.halosAll || []).push(p);
+    };
+    halo(lamps, 0.7, 0xffd9a0, 0.8);
+    halo(bulbs, 0.32, 0xffb860, 0.7);
+    // A coloured wash over the roof: cyan by the water tower, magenta by the stair door, amber
+    // over the lounge side. Real lights, so only above Low.
+    if (quality !== "low") {
+      [[0x4fd8ff, -7.5, 1.6, -8.4, 5], [0xff5fc8, 8.6, 1.8, 3.6, 4], [0xffa24a, -8.5, 1.8, 6.5, 4]].forEach(function (L) {
+        const l = new THREE.PointLight(L[0], L[4], 10, 1.7);
+        l.position.set(L[1], L[2], L[3]);
+        scene.add(l);
+      });
+    }
+  }
+
   // ------------------------------------------------------------------ the neon sign
   function neon(scene, b) {
     // On a steel frame above the north parapet, facing the table: a spade in tube
@@ -729,7 +805,7 @@ globalThis.HS = globalThis.HS || {};
     const c = B.canvas(1024, 256), g = c.getContext("2d");
     g.font = "900 120px 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
     g.shadowColor = "#5fe1ff"; g.shadowBlur = 40; g.strokeStyle = "#bff6ff"; g.lineWidth = 9;
-    g.strokeText("HOP", 512, 70); g.shadowBlur = 20; g.strokeText("HOP", 512, 70);
+    g.strokeText("ROOFTOP", 512, 70); g.shadowBlur = 20; g.strokeText("ROOFTOP", 512, 70);
     g.shadowColor = "#ff4fa3"; g.strokeStyle = "#ffd1e8"; g.shadowBlur = 40; g.strokeText("SPADES", 512, 190); g.shadowBlur = 18; g.strokeText("SPADES", 512, 190);
     const t = B.tex(c);
     const letters = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.9 * 1.8 / 1.6 * 3.2 / 3.6), new THREE.MeshBasicMaterial({ map: t, transparent: true, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -938,7 +1014,7 @@ globalThis.HS = globalThis.HS || {};
     const badgeMat = new THREE.MeshBasicMaterial({ map: B.hopBadgeTex(), transparent: true, toneMapped: false, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     Room.TABLES.forEach(function (T, k) {
       const felt = table(b, T);
-      felt.material = k === 0 ? mats.felt : new THREE.MeshStandardMaterial({ map: B.feltTex({ c: T.felt, text: "♠ HOP SPADES ♠ " + HS.t("tier" + T.tier).toUpperCase() + " " + HS.t("tableWord").toUpperCase() + " " }), roughness: 0.98 });
+      felt.material = k === 0 ? mats.felt : new THREE.MeshStandardMaterial({ map: B.feltTex({ c: T.felt, text: "♠ ROOFTOP SPADES ♠ " + HS.t("tier" + T.tier).toUpperCase() + " " + HS.t("tableWord").toUpperCase() + " " }), roughness: 0.98 });
       felt.receiveShadow = true;
       world.add(felt);
       T.felt = felt;
@@ -972,6 +1048,7 @@ globalThis.HS = globalThis.HS || {};
     lights(b, world, Room.TABLES[0], POLES, [0.53, 0.53, 0.66, 0.66]);
     plants(world);
     neon(world, b);
+    moreLights(b, world, quality);
     // The signs: by each table, facing the way people come (from the stairs, or from the first deck).
     const face = function (x, z, tx, tz) { return Math.atan2(tx - x, tz - z); };
     sign(b, world, Room.TABLES[0], 1.4, 3.25, face(1.4, 3.25, Room.SPAWN.x, Room.SPAWN.z));

@@ -117,8 +117,8 @@ globalThis.HS = globalThis.HS || {};
         g.save(); g.translate(CELL_W / 2, CELL_H / 2 - 4);
         g.fillStyle = BLACK; HS.Build.spadePath(g, 0, 0, 92); g.fill();
         g.strokeStyle = "#e6b437"; g.lineWidth = 2.5; HS.Build.spadePath(g, 0, 0, 78); g.stroke();
-        g.fillStyle = "#e6b437"; g.font = "700 15px Georgia, serif"; g.fillText("HOP", 0, 6);
-        g.font = "700 11px Georgia, serif"; g.fillStyle = BLACK; g.fillText("ROOFTOP CLUB", 0, 76);
+        g.fillStyle = "#e6b437"; g.font = "700 15px Georgia, serif"; g.fillText("CTSG", 0, 6);
+        g.font = "700 10px Georgia, serif"; g.fillStyle = BLACK; g.fillText("ROOFTOP SPADES", 0, 76);
         g.restore();
       } else pip(g, s, CELL_W / 2, CELL_H / 2, 70);
     } else if (r >= 9) court(g, s, r, x0 - 6, y0, w + 12, h);
@@ -143,8 +143,19 @@ globalThis.HS = globalThis.HS || {};
     g.fillStyle = "#1d2a52"; g.beginPath(); g.ellipse(CELL_W / 2, CELL_H / 2, 46, 58, 0, 0, Math.PI * 2); g.fill();
     g.strokeStyle = "#e6b437"; g.lineWidth = 2; g.stroke();
     g.fillStyle = "#e6b437"; HS.Build.spadePath(g, CELL_W / 2, CELL_H / 2 - 4, 58); g.fill();
-    g.fillStyle = "#1d2a52"; g.font = "700 11px Georgia, serif"; g.textAlign = "center"; g.fillText("HOP", CELL_W / 2, CELL_H / 2 + 2);
     g.restore();
+  }
+  // The back's centre becomes the CTSG seal (the studio's mark) once it loads; until
+  // then, or if it never does, the gold spade stays.
+  function sealBack(t) {
+    const img = new Image();
+    img.onload = function () {
+      const g = t.image.getContext("2d"), x = 13 * CELL_W + CELL_W / 2, y = CELL_H / 2;
+      g.fillStyle = "#1d2a52"; g.beginPath(); g.ellipse(x, y, 45, 57, 0, 0, Math.PI * 2); g.fill();
+      g.drawImage(img, x - 43, y - 43, 86, 86);
+      t.needsUpdate = true;
+    };
+    img.src = "assets/ctsg-seal.png";
   }
   function atlas() {
     const c = HS.Build.canvas(CELL_W * COLS, CELL_H * ROWS), g = c.getContext("2d");
@@ -156,6 +167,7 @@ globalThis.HS = globalThis.HS || {};
     return t;
   }
   C.drawCardTo = function (g, c, x, y) { drawCard(g, c, x, y); };   // the HUD's little cards
+  C.drawBackTo = function (g, x, y) { drawBack(g, x, y); };
 
   // ------------------------------------------------------------------ geometry
   // One mesh per card: the face (+Z) and the back (-Z) in one geometry, UVs into the atlas.
@@ -190,6 +202,7 @@ globalThis.HS = globalThis.HS || {};
   // ------------------------------------------------------------------ setup
   C.init = function (scene) {
     C.tex = atlas();
+    sealBack(C.tex);
     C.group = new THREE.Group();
     scene.add(C.group);
     for (let c = 0; c < 52; c++) {
@@ -291,6 +304,8 @@ globalThis.HS = globalThis.HS || {};
     const dealing = C.dealT < 2.6;
     // How many each seat has been dealt so far (one card per seat every 0.05 s).
     const dealtTo = function (s) { if (!dealing) return 13; const order = (s - st.d + 3) % 4; return U.clamp(Math.floor((C.dealT / 0.05 - order) / 4) + 1, 0, 13); };
+    // How many of our cards the deal has reached, for the strip along the bottom (hud.js).
+    C.mineDealt = V.seat >= 0 ? dealtTo(me) : 0;
     const inTrick = {};
     st.tr.forEach(function (x, k) { inTrick[x[1]] = { seat: x[0], k: k }; });
     const handIdx = {};
