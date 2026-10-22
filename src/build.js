@@ -306,14 +306,23 @@ globalThis.HS = globalThis.HS || {};
   }
   // The badge on its own transparent square canvas (the Ink disc just fills it), for an
   // unlit decal: room.js lays it on the felt with toneMapped off so the colours stay exact.
+  // The symbol itself is the brand kit's PNG (assets/brand/hoplobby-icon-on-dark-512.png, unaltered),
+  // drawn on its intended Ink background with clear space round it.
   B.hopBadgeTex = function () {
     const S = 512, c = canvas(S, S), g = c.getContext("2d");
-    g.translate(S / 2, S / 2);
-    hopSymbol(g, (S / 2) / (Math.hypot(112, 128) / 2 / 128 + 0.25));
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+    const img = new Image();
+    img.onload = function () {
+      g.fillStyle = "#141822"; g.beginPath(); g.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2); g.fill();
+      const w = S * 0.62, h = w * img.height / img.width;
+      g.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+      t.needsUpdate = true;
+    };
+    img.src = "assets/brand/hoplobby-icon-on-dark-512.png";
     return t;
   };
+  void hopSymbol;
   // A spade outline, centred at (x, y), size s.
   B.spadePath = function (g, x, y, s) {
     g.beginPath();

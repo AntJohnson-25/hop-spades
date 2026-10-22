@@ -20,7 +20,7 @@ globalThis.HS = globalThis.HS || {};
     V.renderer.outputColorSpace = THREE.SRGBColorSpace;
     V.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     V.renderer.toneMappingExposure = 1.15;
-    V.renderer.shadowMap.enabled = quality === "medium" || quality === "high";
+    V.renderer.shadowMap.enabled = quality === "medium" || quality === "high" || quality === "ultra";
     V.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     V.scene = new THREE.Scene();
     V.camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.03, 3000);
@@ -33,10 +33,16 @@ globalThis.HS = globalThis.HS || {};
     V.quality = q;
     const dpr = window.devicePixelRatio || 1;
     // Potato renders below 1 (the biggest saving on a weak machine); the shadows, the coloured wash lights and the crowd of bulbs follow the preset too.
-    V.renderer.setPixelRatio(Math.min(dpr, q === "high" ? 2 : q === "medium" ? 1.5 : q === "low" ? 1 : 0.7));
-    const shadows = q === "medium" || q === "high";
+    // Ultra over High: full resolution on the sharpest screens and a 4096 px lantern shadow.
+    V.renderer.setPixelRatio(Math.min(dpr, q === "ultra" ? 3 : q === "high" ? 2 : q === "medium" ? 1.5 : q === "low" ? 1 : 0.7));
+    const shadows = q === "medium" || q === "high" || q === "ultra";
     V.renderer.shadowMap.enabled = shadows;
-    if (HS.Room && HS.Room.spot) HS.Room.spot.castShadow = shadows;
+    const spot = HS.Room && HS.Room.spot;
+    if (spot) {
+      spot.castShadow = shadows;
+      const size = q === "ultra" ? 4096 : q === "high" ? 2048 : 1024;
+      if (spot.shadow.mapSize.x !== size) { spot.shadow.mapSize.set(size, size); if (spot.shadow.map) { spot.shadow.map.dispose(); spot.shadow.map = null; } }
+    }
     if (HS.Room && HS.Room.setDetail) HS.Room.setDetail(q);
     V.resize();
   };

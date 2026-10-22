@@ -126,36 +126,44 @@ globalThis.HS = globalThis.HS || {};
   // Hands nobody reported (bots, people who went quiet) are re-dealt from the
   // cards still unaccounted for, so the hand can carry on.
   T.fromPublic = function (st, known, seed) {
+    // (net.js checks a state before it gets here; still, a missing field falls back to a safe default
+    // rather than throwing halfway through a host change.)
+    const four = function (a, d) { return Array.isArray(a) && a.length === 4 ? a.slice() : [d, d, d, d]; };
+    const two = function (a) { return Array.isArray(a) && a.length === 2 ? a.slice() : [0, 0]; };
+    const o = st.o || {};
     const t = T.create({
-      id: st.id, seed: seed, dealer: st.d, k: st.k,
-      seats: st.seats.map(function (s) { return { name: s[0], bot: !!s[1], hl: s[2], look: s[3] }; }),
-      opts: { target: st.o.target, blindNil: st.o.blind, timer: st.o.timer, chaos: st.o.chaos, level: st.o.level }
+      id: st.id, seed: seed, dealer: st.d | 0, k: st.k | 0,
+      seats: (st.seats || []).map(function (s) { return { name: s[0], bot: !!s[1], hl: s[2], look: s[3] }; }),
+      opts: { target: o.target || 500, blindNil: !!o.blind, timer: o.timer || 0, chaos: !!o.chaos, level: T.LEVELS.indexOf(o.level) >= 0 ? o.level : "normal" }
     });
     const G = t.G;
-    G.phase = st.ph; G.handNo = st.hn; G.dealer = st.d; G.turn = st.tu; G.leader = st.ld; G.trickNo = st.tn;
-    G.bids = st.bids.slice(); G.tricks = st.tk.slice(); G.trick = st.tr.map(function (x) { return { seat: x[0], card: x[1] }; });
-    G.played = st.pl.slice(); G.broken = st.br; G.scores = st.sc.slice(); G.bags = st.bg.slice();
-    G.lastTrick = st.lt ? { cards: st.lt.c.map(function (x) { return { seat: x[0], card: x[1] }; }), winner: st.lt.w } : null;
-    G.result = st.res; G.history = (st.hist || []).slice(); G.cuts = st.cuts.slice(); G.covers = (st.cov || [0, 0, 0, 0]).slice();
-    G.winner = st.win; G.blindOk = st.bl.slice();
+    G.phase = st.ph; G.handNo = st.hn | 0; G.dealer = st.d | 0; G.turn = st.tu | 0; G.leader = st.ld | 0; G.trickNo = st.tn | 0;
+    G.bids = four(st.bids, null); G.tricks = four(st.tk, 0); G.trick = (st.tr || []).map(function (x) { return { seat: x[0], card: x[1] }; });
+    G.played = (st.pl || []).slice(); G.broken = !!st.br; G.scores = two(st.sc); G.bags = two(st.bg);
+    G.lastTrick = st.lt && Array.isArray(st.lt.c) ? { cards: st.lt.c.map(function (x) { return { seat: x[0], card: x[1] }; }), winner: st.lt.w } : null;
+    G.result = st.res || null; G.history = (st.hist || []).slice(); G.cuts = four(st.cuts, 0); G.covers = four(st.cov, 0);
+    G.winner = typeof st.win === "number" ? st.win : -1; G.blindOk = four(st.bl, false);
+    const hc = four(st.hc, 0);
     // Hands.
     const taken = new Set(G.played);
+    G.trick.forEach(function (x) { taken.add(x.card); });
     const hands = [null, null, null, null];
     for (let s = 0; s < 4; s++) {
       const h = known[s];
-      if (Array.isArray(h) && h.length === st.hc[s] && h.every(function (c) { return U.int(c, 0, 51) && !taken.has(c); })) {
+      // (no repeats within the hand either: a card counts once)
+      if (Array.isArray(h) && h.length === hc[s] && new Set(h).size === h.length && h.every(function (c) { return U.int(c, 0, 51) && !taken.has(c); })) {
         hands[s] = h.slice(); h.forEach(function (c) { taken.add(c); });
       }
     }
     const pool = [];
     for (let c = 0; c < 52; c++) if (!taken.has(c)) pool.push(c);
     U.shuffle(pool, t.rnd);
-    for (let s = 0; s < 4; s++) if (!hands[s]) hands[s] = pool.splice(0, st.hc[s]);
+    for (let s = 0; s < 4; s++) if (!hands[s]) hands[s] = pool.splice(0, hc[s]);
     G.hands = hands.map(R.sortHand);
     t.seq = st.ev && st.ev.length ? st.ev[st.ev.length - 1].q : 0;
     t.log = (st.ev || []).slice();
     t.v = (st.v || 0) + 1;
-    t.rebuilt = hands.map(function (h, s) { return !(Array.isArray(known[s]) && known[s].length === st.hc[s]); });
+    t.rebuilt = hands.map(function (h, s) { return !(Array.isArray(known[s]) && known[s].length === hc[s]); });
     return t;
   };
   HS.Table = T;

@@ -10,6 +10,8 @@ globalThis.HS = globalThis.HS || {};
   const H = { tags: [], last: {} };
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   H.esc = esc;
+  // A number for the page (anything else, from a bad state, shows as 0: never text or markup).
+  function num(x) { return typeof x === "number" && isFinite(x) ? String(x) : "0"; }
   H.init = function (on) {
     H.on = on;
     // Bid chips: nil, 1..13.
@@ -65,19 +67,19 @@ globalThis.HS = globalThis.HS || {};
       let n = 0;
       const nil = [];
       bs.forEach(function (b) { if (b === null) return; if (R.isNil(b)) nil.push(b === -1 ? "B.nil" : "nil"); else n += b; });
-      return n + (nil.length ? " + " + nil.join(" + ") : "");
+      return num(n) + (nil.length ? " + " + nil.join(" + ") : "");
     };
-    const took = function (team) { return st.tk[team] + st.tk[team + 2]; };
+    const took = function (team) { return num(st.tk[team] + st.tk[team + 2]); };
     const row = function (team, cls, name) {
-      return "<div class='team " + cls + "'><div class='tn'><span>" + esc(name) + "</span><span>" + esc(t("bags", st.bg[team])) + "</span></div>" +
-        "<div class='sc'>" + st.sc[team] + "</div><div class='sub'>" + t("bid") + " <b>" + bidOf(team) + "</b> · " + t("took2") + " <b>" + took(team) + "</b></div></div>";
+      return "<div class='team " + cls + "'><div class='tn'><span>" + esc(name) + "</span><span>" + esc(t("bags", num(st.bg[team]))) + "</span></div>" +
+        "<div class='sc'>" + num(st.sc[team]) + "</div><div class='sub'>" + esc(t("bid")) + " <b>" + bidOf(team) + "</b> · " + esc(t("took2")) + " <b>" + took(team) + "</b></div></div>";
     };
     const html = row(us, "us", names.us) + row(them, "them", names.them) + "<div class='meta'>" + esc(t("hand", st.hn)) + " · " + esc(t("target", st.o.target)) + "</div>";
     if (html !== H.last.scores) { $("scores").innerHTML = html; H.last.scores = html; }
     // Your own bid, as a reminder: centred under your tray, over the status line (the
     // others' bids are on their name tags: seats.js). Not before you've bid.
     const mb = seat >= 0 ? st.bids[seat] : null, el = $("myBid");
-    const mine = mb === null ? "" : esc(t("yourBidIs")) + " <b>" + esc(mb === -1 ? t("bidBlind") : mb === 0 ? t("bidNil") : String(mb)) + "</b> · " + t("took2") + " <b>" + st.tk[seat] + "</b>";
+    const mine = mb === null ? "" : esc(t("yourBidIs")) + " <b>" + esc(mb === -1 ? t("bidBlind") : mb === 0 ? t("bidNil") : String(mb)) + "</b> · " + esc(t("took2")) + " <b>" + num(st.tk[seat]) + "</b>";
     if (mine !== H.last.myBid) { el.innerHTML = mine; el.hidden = !mine; H.last.myBid = mine; }
   };
   H.status = function (text, mine, left, total) {
@@ -264,9 +266,9 @@ globalThis.HS = globalThis.HS || {};
     const res = st.res;
     const teamRow = function (team, cls, name) {
       const r = res.teams[team];
-      const bid = r.bid + (r.nils.length ? " + " + r.nils.map(function (n) { return n.blind ? "B.nil" : "nil"; }).join(" + ") : "");
+      const bid = num(r.bid) + (r.nils.length ? " + " + r.nils.map(function (n) { return n.blind ? "B.nil" : "nil"; }).join(" + ") : "");
       const pts = r.points - r.penalty;
-      return "<tr class='" + cls + "'><td>" + esc(name) + "</td><td>" + bid + "</td><td>" + r.tricks + "</td><td>" + (pts > 0 ? "+" : "") + pts + "</td><td>" + r.bagTotal + "</td><td class='tot'>" + r.total + "</td></tr>";
+      return "<tr class='" + cls + "'><td>" + esc(name) + "</td><td>" + bid + "</td><td>" + num(r.tricks) + "</td><td>" + (pts > 0 ? "+" : "") + num(pts) + "</td><td>" + num(r.bagTotal) + "</td><td class='tot'>" + num(r.total) + "</td></tr>";
     };
     const notes = [];
     [us, 1 - us].forEach(function (team) {
@@ -300,7 +302,7 @@ globalThis.HS = globalThis.HS || {};
     if (o.online && o.host) btns += "<button type='button' id='fEnd'>" + esc(t("endAll")) + "</button>";
     btns += "<button type='button' id='fBack'>" + esc(t("standUp")) + "</button>";
     const html = "<div class='final-title " + (won && seat >= 0 ? "win" : "") + "'>" + esc(seat < 0 ? t("teamWins", st.win === 0 ? names.us : names.them) : won ? t("youWin") : t("youLose")) + "</div>" +
-      "<div class='final-score'>" + esc(names.us) + " " + st.sc[us] + " – " + st.sc[1 - us] + " " + esc(names.them) + "</div>" +
+      "<div class='final-score'>" + esc(names.us) + " " + num(st.sc[us]) + " – " + num(st.sc[1 - us]) + " " + esc(names.them) + "</div>" +
       "<div class='sum-notes'>" + per + "</div><div class='sum-notes' style='margin-top:6px'>" + esc(t("cutsLine", cutsUs + " / " + cutsThem)) + "</div>" +
       "<div class='final-btns'>" + btns + "</div>";
     if (html !== H.last.final) {
@@ -315,9 +317,9 @@ globalThis.HS = globalThis.HS || {};
     $("scoreSheet").hidden = !open;
     if (!open) return;
     const me = seat >= 0 ? seat : 0, us = me % 2, names = H.teamNames(st, seat);
-    const rows = (st.hist || []).map(function (h) { return "<tr><td>" + h.hand + "</td><td>" + (h.points[us] > 0 ? "+" : "") + h.points[us] + "</td><td>" + h.scores[us] + "</td><td>" + (h.points[1 - us] > 0 ? "+" : "") + h.points[1 - us] + "</td><td>" + h.scores[1 - us] + "</td></tr>"; }).join("");
+    const rows = (st.hist || []).map(function (h) { return "<tr><td>" + num(h.hand) + "</td><td>" + (h.points[us] > 0 ? "+" : "") + num(h.points[us]) + "</td><td>" + num(h.scores[us]) + "</td><td>" + (h.points[1 - us] > 0 ? "+" : "") + num(h.points[1 - us]) + "</td><td>" + num(h.scores[1 - us]) + "</td></tr>"; }).join("");
     const html = "<h2>" + esc(t("sumTotal")) + "</h2><table class='sum-table'><tr><th>#</th><th colspan='2'>" + esc(names.us) + "</th><th colspan='2'>" + esc(names.them) + "</th></tr>" + rows +
-      "<tr class='tot'><td></td><td></td><td>" + st.sc[us] + "</td><td></td><td>" + st.sc[1 - us] + "</td></tr></table>";
+      "<tr class='tot'><td></td><td></td><td>" + num(st.sc[us]) + "</td><td></td><td>" + num(st.sc[1 - us]) + "</td></tr></table>";
     if (html !== H.last.sheet) { $("sheetBody").innerHTML = html; H.last.sheet = html; }
   };
   HS.HUD = H;

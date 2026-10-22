@@ -226,16 +226,7 @@ globalThis.HS = globalThis.HS || {};
     const badge = new THREE.Mesh(new THREE.CircleGeometry(0.58, 64), new THREE.MeshBasicMaterial({ map: B.hopBadgeTex(), transparent: true, toneMapped: false }));
     badge.position.set(7.75, y, z - 0.02); badge.rotation.y = Math.PI;
     parent.add(badge);
-    const c = B.canvas(1024, 512), g = c.getContext("2d");
-    g.font = "900 190px 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
-    g.shadowColor = "#5fe1ff"; g.shadowBlur = 50; g.strokeStyle = "#bff6ff"; g.lineWidth = 12;
-    g.font = "900 150px 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif";
-    g.strokeText("ROOFTOP", 512, 150); g.shadowBlur = 24; g.strokeText("ROOFTOP", 512, 150);
-    g.font = "900 190px 'Arial Rounded MT Bold', 'Segoe UI', Arial, sans-serif";
-    g.shadowColor = "#ff4fa3"; g.strokeStyle = "#ffd1e8"; g.shadowBlur = 50; g.strokeText("SPADES", 512, 360); g.shadowBlur = 22; g.strokeText("SPADES", 512, 360);
-    const title = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.75), new THREE.MeshBasicMaterial({ map: B.tex(c), transparent: true, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending }));
-    title.position.set(9.3, y, z - 0.022); title.rotation.y = Math.PI;
-    parent.add(title);
+    // (Our title isn't on this wall any more: the symbol stands alone, no lockup.)
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: B.glowTex(0.02), color: 0xff4fa3, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending }));
     // (Between the panel and the badge, so the glow never tints the symbol.)
     glow.scale.set(3.6, 2.2, 1); glow.position.set(8.6, y, z - 0.012);
@@ -775,7 +766,7 @@ globalThis.HS = globalThis.HS || {};
   // Graphics preset: the real wash lights (a cost on every lit pixel) only from Medium up, and
   // the bulb halos only from Low up (HopLobby presets: potato, low, medium, high).
   Room.setDetail = function (q) {
-    (Room.wash || []).forEach(function (l) { l.visible = q === "medium" || q === "high"; });
+    (Room.wash || []).forEach(function (l) { l.visible = q === "medium" || q === "high" || q === "ultra"; });
     (Room.halosAll || []).forEach(function (h) { h.visible = q !== "potato"; });
   };
 
@@ -819,9 +810,8 @@ globalThis.HS = globalThis.HS || {};
     // Between the spade and the lettering (where the user marked it): the HopLobby symbol,
     // unaltered on its Ink badge with its clear space, set apart from our title (not a
     // HopLobby-style title lockup: the brand kit leaves those to HopLobby).
-    const hop = new THREE.Mesh(new THREE.CircleGeometry(0.47, 64), new THREE.MeshBasicMaterial({ map: B.hopBadgeTex(), transparent: true, toneMapped: false }));
-    hop.position.set(0.0, y + 0.05, z + 0.012);
-    scene.add(hop);
+    // (No HopLobby symbol on the sign: next to our title it would read as a lockup. It's on the
+    // stair bulkhead's wall, on its own.)
     // A soft spill of neon light.
     const spill = new THREE.Sprite(new THREE.SpriteMaterial({ map: B.glowTex(0.02), color: 0xff4fa3, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
     // (Behind the HopLobby badge's plane, so its glow never tints the symbol: no recolouring.)
@@ -1016,18 +1006,12 @@ globalThis.HS = globalThis.HS || {};
     Room.world = world;
     const b = B.batch();
     Room._b = b;
-    const badgeMat = new THREE.MeshBasicMaterial({ map: B.hopBadgeTex(), transparent: true, toneMapped: false, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     Room.TABLES.forEach(function (T, k) {
       const felt = table(b, T);
       felt.material = k === 0 ? mats.felt : new THREE.MeshStandardMaterial({ map: B.feltTex({ c: T.felt, text: "♠ ROOFTOP SPADES ♠ " + HS.t("tier" + T.tier).toUpperCase() + " " + HS.t("tableWord").toUpperCase() + " " }), roughness: 0.98 });
       felt.receiveShadow = true;
       world.add(felt);
       T.felt = felt;
-      // The HopLobby symbol in the middle of the felt: an unlit decal (exact brand colours
-      // whatever the lighting), a child of the felt so it turns with it to face each player.
-      const badge = new THREE.Mesh(new THREE.CircleGeometry(0.19, 64), badgeMat);
-      badge.position.z = 0.0006;
-      felt.add(badge);
       for (let s = 0; s < 4; s++) { const p = Room.seatPos(s, Room.SEAT_R + 0.12); chair(b, T.x + p.x, T.z + p.z, Room.seatYaw(s)); tray(b, s, T); }
       // A round outdoor rug under the table.
       const rug = new THREE.Mesh(new THREE.CircleGeometry(1.75, 64), mats.rug);
@@ -1080,7 +1064,8 @@ globalThis.HS = globalThis.HS || {};
     spot.position.set(0, Room.lanternY - 0.1, 0);
     spot.target.position.set(0, 0, 0);
     spot.castShadow = quality !== "low";
-    spot.shadow.mapSize.set(quality === "high" ? 2048 : 1024, quality === "high" ? 2048 : 1024);
+    const shadowPx = quality === "ultra" ? 4096 : quality === "high" ? 2048 : 1024;
+    spot.shadow.mapSize.set(shadowPx, shadowPx);
     spot.shadow.bias = -0.0004; spot.shadow.normalBias = 0.02;
     spot.shadow.camera.near = 0.2; spot.shadow.camera.far = 6;
     scene.add(spot); scene.add(spot.target);

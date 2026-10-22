@@ -55,7 +55,7 @@ globalThis.HS = globalThis.HS || {};
   }
   function savePrefs() { try { localStorage.setItem("hop-spades:prefs", JSON.stringify(Object.assign({}, G.prefs, { opts: G.opts }))); } catch (e) { /* ignore */ } }
   function setLoad(f, msg) { $("loadFill").style.width = (f * 100) + "%"; if (msg) $("loadMsg").textContent = msg; HopLobby.progress(f, msg); }
-  // Our four looks from HopLobby's preset (HopLobby.graphics.level, Auto already resolved).
+  // Our five looks from HopLobby's preset (HopLobby.graphics.level, Auto already resolved).
   function qualityFrom(settings, device) {
     const forced = /[?&]g=(potato|low|medium|high)\b/.exec(location.search);   // test hook
     if (forced) return forced[1];
@@ -64,7 +64,8 @@ globalThis.HS = globalThis.HS || {};
     if (g === "potato") return "potato";
     if (g === "low") return "low";
     if (g === "medium") return "medium";
-    if (g === "high" || g === "ultra") return "high";
+    if (g === "high") return "high";
+    if (g === "ultra") return "ultra";
     return device && device.mobile ? "medium" : "high";
   }
   // HopLobby's settings (its Esc menu) rule sound, graphics and the camera inside HopLobby:
@@ -161,7 +162,7 @@ globalThis.HS = globalThis.HS || {};
         Room.setDetail(View.quality);
         Cards.init(View.scene);
         setLoad(0.5, t("boot3"));
-        H.init({ bid: onBid, look: function () { G.looked = true; }, react: onReact, dealNow: dealNow, again: playAgain, endAll: endAll, back: standUp });
+        H.init({ bid: onBid, look: function () { G.looked = true; Net.look(); }, react: onReact, dealNow: dealNow, again: playAgain, endAll: endAll, back: standUp });
         wire();
         if (DEBUG) startDebug();
         Seats.prepare(function (f) { setLoad(0.5 + f * 0.45, t("boot3")); }).then(function () {
@@ -248,6 +249,7 @@ globalThis.HS = globalThis.HS || {};
     const n = Walk.near, st = n && Net.sts[n.k];
     if (G.mode !== "walk" || !n) return;
     A.unlock();
+    if (!st && Net.tableDone(n.k)) { walkMsg(t("tableDone")); return; }
     if (st && !st.seats.some(function (x) { return x[1]; })) { walkMsg(t("tableFull")); return; }
     if (!Net.sit(n.k, n.s)) { walkMsg(t("tableFull")); return; }
     if (Net.isClient()) { G.sitAsk = performance.now(); walkMsg(t("sitting"), 2); }
@@ -260,17 +262,17 @@ globalThis.HS = globalThis.HS || {};
     // A sit request the host never answered.
     if (G.sitAsk && performance.now() - G.sitAsk > 4000) { G.sitAsk = 0; walkMsg(t("noAnswer")); }
     if (!n) { el.hidden = true; G.promptKey = ""; return; }
-    const st = Net.sts[n.k], live = !!st;
+    const st = Net.sts[n.k], live = !!st, done = !live && Net.tableDone(n.k);
     const humans = live ? st.seats.filter(function (x) { return !x[1]; }).length : 0, full = humans === 4;
-    const key = n.k + ":" + (live ? "l" + humans : "f");
+    const key = n.k + ":" + (live ? "l" + humans : done ? "d" : "f");
     if (key === G.promptKey) return;
     G.promptKey = key;
     el.hidden = false;
     const name = t("sitTable", tierName(n.k));
-    const sub = full ? t("tableFull") : live ? t("sitPlaying", humans) : t("sitBots", t("tierSub" + Room.TABLES[n.k].tier));
+    const sub = full ? t("tableFull") : live ? t("sitPlaying", humans) : done ? t("tableDone") : t("sitBots", t("tierSub" + Room.TABLES[n.k].tier));
     $("promptTxt").innerHTML = escH(name) + "<small>" + escH(sub) + "</small>";
     const b = $("btnSit");
-    b.hidden = full;
+    b.hidden = full || done;
     b.innerHTML = escH(live ? t("sitJoin") : t("sitDown")) + (document.body.classList.contains("touch") ? "" : "<kbd>E</kbd>");
   }
   function escH(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -336,15 +338,12 @@ globalThis.HS = globalThis.HS || {};
     if (G.mode === "menu") enterWalk(true);
   }
   function playAgain() { if (Net.runs() && Net.t) { Net.restart(optsFor(Net.t.k)); resetTableUi(); } }
+  // The host ends the round (End game, or every game is over): the results of every table go to
+  // HopLobby, which shows them and runs the rematch.
   function endAll() {
-    const st = Net.st;
-    if (!st || !Net.isHost()) return;
-    const entries = [];
-    st.seats.forEach(function (s, i) {
-      if (s[1] || !s[2]) return;
-      entries.push({ playerId: s[2], place: R.team(i) === st.win ? 1 : 2, score: st.sc[R.team(i)], label: R.team(i) === st.win ? "Won" : "Lost" });
-    });
-    HopLobby.endGame({ title: "Rooftop Spades", entries: entries });
+    if (!Net.isHost() || G.roundEnded) return;
+    G.roundEnded = true;
+    HopLobby.endGame({ title: "Rooftop Spades", entries: Net.results() });
   }
   function dealNow() { if (Net.runs() && Net.t) { T.nextHand(Net.t, Net.now()); Net.step(); } }
 
@@ -457,6 +456,8 @@ globalThis.HS = globalThis.HS || {};
     Net.view(view);
     // The games: the host (or solo) runs every table's whether or not they're sitting at one.
     Net.step();
+    // Every game that was started has finished: the host hands the round to HopLobby's results.
+    if (Net.roundOver()) endAll();
     // (A chair the host just gave us: that table, this frame.)
     if (Net.myK >= 0 && Net.myK !== view) { view = Net.myK; Net.view(view); }
     let st = Net.st, seat = st && Net.myK === view ? Net.seat : -1;
@@ -516,9 +517,12 @@ globalThis.HS = globalThis.HS || {};
     const myTurn = playing && Net.myTurn();
     const legal = myTurn && st.ph === "play" ? Net.legal() : [];
     const faceDown = playing && st.ph === "bid" && st.bl[seat] && st.o.blind && st.bids[seat] === null && !G.looked;
+    // Deciding on blind nil: the host hasn't sent our cards yet (it sends them once we look or bid),
+    // so stand placeholder backs in the tray.
+    const shown = faceDown && !hand.length ? Array.from({ length: st.hc[seat] }, function (_, i) { return i; }) : hand;
     Cards.hover = G.hover; Cards.picked = G.picked;
-    Cards.update({ st: st, hand: playing ? hand : [], seat: seat, eye: Seats.eye, legal: legal, assist: G.prefs.assist, faceDown: faceDown, dt: dt });
-    if (playing) H.hand({ cards: hand.slice(0, Cards.mineDealt), legal: legal, assist: G.prefs.assist, picked: G.picked, hover: G.hover, faceDown: faceDown, turn: myTurn && st.ph === "play" });
+    Cards.update({ st: st, hand: playing ? shown : [], seat: seat, eye: Seats.eye, legal: legal, assist: G.prefs.assist, faceDown: faceDown, dt: dt });
+    if (playing) H.hand({ cards: shown.slice(0, Cards.mineDealt), legal: legal, assist: G.prefs.assist, picked: G.picked, hover: G.hover, faceDown: faceDown, turn: myTurn && st.ph === "play" });
     // Turn the felt so its printed emblem (the HopLobby symbol) is upright from your seat.
     if (Room.felt) Room.felt.rotation.z = playing ? Room.seatYaw(seat) : 0;
     View.update({ mode: playing ? "seat" : G.mode === "walk" ? "walk" : "orbit", seat: seat, eye: Seats.eye, dt: dt, t: G.t, spectate: false, slow: true, focus: Walk.focus(_focus), clamp: Room.clampCam });

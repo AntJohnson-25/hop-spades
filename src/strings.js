@@ -19,6 +19,7 @@ globalThis.HS = globalThis.HS || {};
     walkKeysDesk: "WASD or arrows to walk · Shift to hurry · drag to look · E to sit down",
     walkKeysTouch: "Left side: walk stick · drag to look · tap Sit down at a table",
     sitDown: "Sit down", sitJoin: "Join the game", sitTable: "{0} table", sitBots: "{0} · bots fill the empty chairs", sitPlaying: "{0} at the table · take a bot's chair",
+    tableDone: "Game over at this table: the next round starts after HopLobby's results.",
     busyTable: "A game is on at the {0} table: join them there.", tableFull: "The table is full: watch from here.", sitting: "Sitting down…", noAnswer: "No answer from the host: try again.",
     boardOpen: "Open · walk up and sit down", boardBots: "Bots playing · sit down to take a chair", boardPlaying: "Playing: {0} · {1} chairs free", boardPlaying1: "Playing: {0} · 1 chair free", boardFull: "Full: {0}", boardMore: "{0} +{1}",
     standUp: "Stand up", standShort: "Stand up", tStood: "{0} got up: a bot takes the chair", tSat: "{0} sat down",
